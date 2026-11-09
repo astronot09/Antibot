@@ -5,23 +5,40 @@ from enum import Enum, auto
 
 class ScreenState(Enum):
     MAIN_MENU = auto()
-    SETTINGS = auto()
-    HINTS = auto()
     GAME = auto()
     GAME_OVER = auto()
 
+class TrayState(Enum):
+    NONE = auto()
+    SETTINGS = auto()
+    HINTS = auto()
 
 class Difficulty(Enum):
     EASY = auto()
     MEDIUM = auto()
     HARD = auto()
 
+# Sprite class
+
+class Sprite:
+    def __init__(self, imageBank, sourceX, sourceY, width, height, transparentColour=None):
+        self.imageBank = imageBank
+
+        self.sourceX = sourceX
+        self.sourceY = sourceY
+        self.width = width
+        self.height = height
+
+        self.transparentColour = transparentColour
+
+    def draw(self, x, y, scale=1):
+        pyxel.blt(x, y, self.imageBank, self.sourceX, self.sourceY, self.width, self.height, self.transparentColour, scale=scale)
 
 
 # Button Class
 
 class Button:
-    def __init__(self, x, y, width, height, text, bgColour=0, textColour=7):
+    def __init__(self, x, y, width, height, text, bgColour=0, textColour=7, sprite=None, hoverSprite=None):
         self.x = x
         self.y = y
         self.width = width
@@ -29,6 +46,8 @@ class Button:
         self.text = text
         self.bgColour = bgColour
         self.textColour = textColour
+        self.sprite = sprite
+        self.hoverSprite = hoverSprite
 
     def isMouseOver(self, mouseX, mouseY, offsetX = 0):
         actualX = self.x + offsetX
@@ -44,10 +63,7 @@ class Button:
         actualX = self.x + offsetX
         mouseOver = self.isMouseOver(pyxel.mouse_x, pyxel.mouse_y, offsetX)
 
-        if mouseOver:
-            buttonColour = 5
-        else:
-            buttonColour = self.bgColour
+        buttonColour = 5 if mouseOver else self.bgColour
 
         # Draw button background
         pyxel.rect(actualX, self.y, self.width, self.height, buttonColour)
@@ -55,9 +71,21 @@ class Button:
         # Draw button border
         #pyxel.rectb(actualX, self.y, self.width, self.height, 7)
 
-        textX = actualX + (self.width - len(self.text) * 4) // 2
-        textY = self.y + (self.height - 5) // 2
-        pyxel.text(textX, textY, self.text, 7)
+        if self.sprite != None:
+
+            spriteToDraw = self.sprite
+
+            if mouseOver and self.hoverSprite != None:
+                spriteToDraw = self.hoverSprite
+
+            self.spriteX = actualX + (self.width - spriteToDraw.width) // 2
+            self.spriteY = self.y + (self.height - spriteToDraw.height) // 2
+
+            spriteToDraw.draw(self.spriteX, self.spriteY)
+        else:
+            textX = actualX + (self.width - len(self.text) * 4) // 2
+            textY = self.y + (self.height - 5) // 2
+            pyxel.text(textX, textY, self.text, self.textColour)
 
 
 # Textbox class
@@ -93,6 +121,8 @@ class GUI:
         pyxel.mouse(True)
 
         self.currentScreen = ScreenState.MAIN_MENU
+        self.currentTray = TrayState.NONE
+        self.visibleTrays = set()
 
         self.buttonHeight = 25
         self.buttonWidth = 125
@@ -105,6 +135,9 @@ class GUI:
         pyxel.run(self.update, self.draw)
 
     def createScreenObjects(self):
+        # Icons
+        self.settingsIcon = Sprite(0,0,0,8,8)
+        self.hoverSettingsIcon = Sprite(0,8,0,8,8)
 
         # Main menu
         self.titleTextBox = Textbox(self.screenWidth//2-self.buttonWidth//2, 50,
@@ -114,7 +147,7 @@ class GUI:
                                     self.buttonWidth,self.buttonHeight,"New Game", bgColour=3)
         
         self.settingsButton = Button(self.trayWidth, self.screenHeight//2-self.buttonWidth//2,
-                                     self.buttonHeight,self.buttonWidth,"O/O", bgColour=3)
+                                     self.buttonHeight,self.buttonWidth,"O/O", bgColour=3, sprite=self.settingsIcon, hoverSprite=self.hoverSettingsIcon)
         self.hintsButton = Button(-self.buttonHeight,self.screenHeight//2-self.buttonWidth//2,
                                   self.buttonHeight,self.buttonWidth,"?", bgColour=3)
 
@@ -125,32 +158,80 @@ class GUI:
 
         self.animateTrays()
 
-        match self.currentScreen:
-            case ScreenState.MAIN_MENU:
-                self.updateMainMenu(mouseX, mouseY, mousePressed)
-            case ScreenState.SETTINGS:
-                self.updateSettings(mouseX, mouseY, mousePressed)
-            case ScreenState.HINTS:
-                self.updateHints(mouseX, mouseY, mousePressed)
+        if self.currentTray != TrayState.NONE:
+            self.updateOpenTray(mouseX, mouseY, mousePressed)
+            return
+        
+        if self.currentScreen == ScreenState.MAIN_MENU:
+            self.updateMainMenu(mouseX, mouseY, mousePressed)
+        elif self.currentScreen == ScreenState.GAME:
+            self.updateGame(mouseX, mouseY, mousePressed)
+
+
+    # Trays
+
+    def animateTrays(self):
+        targetSettingsX = 0 if self.currentTray == TrayState.SETTINGS else -self.trayWidth
+        self.settingsX += (targetSettingsX - self.settingsX) * 0.15
+
+        targetHintsX = (self.screenWidth - self.trayWidth) if self.currentTray == TrayState.HINTS else self.screenWidth
+        self.hintsX += (targetHintsX - self.hintsX) * 0.15
+
+        if abs(self.settingsX + self.trayWidth) < 0.5:
+            self.visibleTrays.discard(TrayState.SETTINGS)
+        if abs(self.hintsX - self.screenWidth) < 0.5:
+            self.visibleTrays.discard(TrayState.HINTS)
+
+    def openTray(self, tray):
+        self.currentTray = tray
+        self.visibleTrays.add(tray)
+
+    def closeTray(self):
+        self.currentTray = TrayState.NONE
+
+    def updateOpenTray(self, mouseX, mouseY, mousePressed):
+        if not mousePressed:
+            return
+
+        if self.currentTray == TrayState.SETTINGS:
+            if self.hintsButton.isClicked(mouseX, mouseY, mousePressed, self.hintsX):
+                self.openTray(TrayState.HINTS)
+            elif mouseX >= self.settingsX + self.trayWidth:
+                self.closeTray()
+            elif self.settingsButton.isClicked(mouseX, mouseY, mousePressed, self.settingsX):
+                self.closeTray()
+
+        elif self.currentTray == TrayState.HINTS:
+            if self.settingsButton.isClicked(mouseX, mouseY, mousePressed, self.settingsX):
+                self.openTray(TrayState.SETTINGS)
+            elif mouseX < self.hintsX:
+                self.closeTray()
+            elif self.hintsButton.isClicked(mouseX, mouseY, mousePressed, self.hintsX):
+                self.closeTray()
+    
+    # Draw
 
     def draw(self):
         pyxel.cls(11)
 
-        self.drawMainMenu()
+        match self.currentScreen:
+            case ScreenState.MAIN_MENU:
+                self.drawMainMenu()
+            case ScreenState.GAME:
+                self.drawGame()
+            case ScreenState.GAME_OVER:
+                self.drawGameOver()
 
-        if self.settingsX > -self.trayWidth:
+        if TrayState.SETTINGS in self.visibleTrays:
             self.drawSettings()
-        if self.hintsX < self.screenWidth:
+        if TrayState.HINTS in self.visibleTrays:
             self.drawHints()
-    
-    def animateTrays(self):
-        targetSettingsX = 0 if self.currentScreen == ScreenState.SETTINGS else -self.trayWidth
-        self.settingsX += (targetSettingsX - self.settingsX) * 0.15
 
-        targetHintsX = (self.screenWidth - self.trayWidth) if self.currentScreen == ScreenState.HINTS else self.screenWidth
-        self.hintsX += (targetHintsX - self.hintsX) * 0.15
+        self.settingsButton.draw(self.settingsX)
+        self.hintsButton.draw(self.hintsX)
+        
 
-    def openScreen(self, targetScreen):
+    def setScreen(self, targetScreen):
         self.currentScreen = targetScreen
 
 
@@ -160,36 +241,22 @@ class GUI:
             self.titleTextBox.draw()
             self.newGameButton.draw()
 
-            if self.currentScreen != ScreenState.SETTINGS:
-                self.settingsButton.draw(self.settingsX)
-            if self.currentScreen != ScreenState.HINTS:
-                self.hintsButton.draw(self.hintsX)
-
     def updateMainMenu(self, mouseX, mouseY, mousePressed):
         if self.newGameButton.isClicked(mouseX, mouseY, mousePressed):
-            # start new game
-            pass
+            self.setScreen(ScreenState.GAME)
         elif self.settingsButton.isClicked(mouseX, mouseY, mousePressed, self.settingsX):
-            self.openScreen(ScreenState.SETTINGS)
+            self.openTray(TrayState.SETTINGS)
         elif self.hintsButton.isClicked(mouseX, mouseY, mousePressed, self.hintsX):
-            self.openScreen(ScreenState.HINTS)
+            self.openTray(TrayState.HINTS)
 
 
     # Settings
 
     def drawSettings(self):
-
             pyxel.rect(self.settingsX, 0, self.trayWidth, self.screenHeight, 3)
 
             # Title
             pyxel.text(self.settingsX + self.trayWidth // 2 - 24, 40, "Settings", 7)
-            # Tray's coords used for elements inside
-            self.settingsButton.draw(self.settingsX)
-
-    def updateSettings(self, mouseX, mouseY, mousePressed):
-
-        if self.settingsButton.isClicked(mouseX, mouseY, mousePressed, self.settingsX):
-            self.openScreen(ScreenState.MAIN_MENU)
 
 
     # Hints
@@ -199,11 +266,21 @@ class GUI:
 
         pyxel.text(self.hintsX + self.trayWidth // 2 - 24, 40, "Hints", 7)
 
-        # Buttons
-        self.hintsButton.draw(self.hintsX)
 
-    def updateHints(self, mouseX, mouseY, mousePressed):
-        if self.hintsButton.isClicked(mouseX, mouseY, mousePressed, self.hintsX):
-            self.openScreen(ScreenState.MAIN_MENU)
+    # Game
 
-GUI(640,360)
+    def drawGame(self):
+        pyxel.cls(4)
+
+    def updateGame(self, mouseX, mouseY, mousePressed):
+        if self.settingsButton.isClicked(mouseX, mouseY, mousePressed, self.settingsX):
+            self.openTray(TrayState.SETTINGS)
+        elif self.hintsButton.isClicked(mouseX, mouseY, mousePressed, self.hintsX):
+            self.openTray(TrayState.HINTS)
+
+    # Game Over
+
+    def drawGameOver(self):
+        pyxel.text(125, 90, "GAME OVER", 7)
+    
+GUI(320,180)
