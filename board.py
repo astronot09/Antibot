@@ -1,30 +1,47 @@
-import pyxel
-from sprite import Sprite
-
-# Board class
+from piece import PieceColour, Piece, PieceType
 
 class Board:
-    def __init__(self, boardX, boardY, squareSize):
-        self.boardX = boardX
-        self.boardY = boardY
-        self.squareSize = squareSize
+    BOARD_SIZE = 8
 
-        self.whiteSquare = Sprite(0, 0, 2, 16, 16)
-        self.blackSquare = Sprite(0, 1, 2, 16, 16)
+    BACK_RANK = (
+        PieceType.ROOK,
+        PieceType.KNIGHT,
+        PieceType.BISHOP,
+        PieceType.QUEEN,
+        PieceType.KING,
+        PieceType.BISHOP,
+        PieceType.KNIGHT,
+        PieceType.ROOK
+        )
 
-    def draw(self):
-        for rowNo in range(8):
-            for colNo in range(8):
+    def __init__(self):
+        self.reset()
 
-                squareX = self.boardX + colNo * self.squareSize
-                squareY = self.boardY + rowNo * self.squareSize
+    def reset(self):
+        self.boardState = [[None for col in range(self.BOARD_SIZE)] for row in range(self.BOARD_SIZE)]
 
-                if (rowNo + colNo) % 2 == 0:
-                    squareSprite = self.whiteSquare
-                else:
-                    squareSprite = self.blackSquare
+        for col, pieceType in enumerate(self.BACK_RANK):
+            # Black pieces
+            self.boardState[0][col] = Piece(pieceType, PieceColour.BLACK)
+            self.boardState[1][col] = Piece(PieceType.PAWN, PieceColour.BLACK)
 
-                squareSprite.draw(squareX, squareY, self.squareSize/16)
+            # White pieces
+            self.boardState[6][col] = Piece(PieceType.PAWN, PieceColour.WHITE)
+            self.boardState[7][col] = Piece(pieceType, PieceColour.WHITE)
 
-        #pyxel.rectb(self.boardX-1, self.boardY-1, 8*self.squareSize+2, 8*self.squareSize+2,0)
-        pyxel.rectb(self.boardX-2, self.boardY-2, 8*self.squareSize+2*self.squareSize//8, 8*self.squareSize+2*self.squareSize//8,0)
+    @staticmethod
+    def isInside(row, col):
+        return 0 <= row and row < 8 and 0 <= col and col < 8
+
+    def getPiece(self, row, col):
+        if not self.isInside(row, col):
+            return None
+        return self.boardState[row][col]
+
+    def setPiece(self, row, col, piece):
+        if not self.isInside(row, col):
+            raise IndexError("Board coordinates must be between 0 and 7")
+        self.boardState[row][col] = piece
+
+    def countPieces(self, colour):
+        return sum(1 for row in self.boardState for piece in row if piece is not None and PieceColour == colour)

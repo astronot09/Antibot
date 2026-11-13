@@ -14,4 +14,6 @@ class Sprite:
         self.transparentColour = transparentColour
 
     def draw(self, x, y, scale=1):
-        pyxel.blt(x, y, self.imageBank, self.sourceX, self.sourceY, self.width, self.height, self.transparentColour, scale=scale)
+        drawX = x - (self.width * (1 - scale)) / 2
+        drawY = y - (self.height * (1 - scale)) / 2
+        pyxel.blt(drawX, drawY, self.imageBank, self.sourceX, self.sourceY, self.width, self.height, self.transparentColour, scale=scale)
